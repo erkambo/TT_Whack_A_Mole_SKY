@@ -246,20 +246,22 @@ endmodule
 `default_nettype none
 
 
+`default_nettype none
+
 //-----------------------------------------------------------------------------  
-// Top-level: tt_um_whack_a_mole with NEG-edge pipelined uio_out  
+// Top-level: tt_um_whack_a_mole with NEG-edge pipelined outputs  
 //-----------------------------------------------------------------------------  
 module tt_um_whack_a_mole(  
     input  wire [7:0] ui_in,  
-    output wire [7:0] uo_out,  
+    output wire [7:0] uo_out,    // 7-segment + dp  
     input  wire [7:0] uio_in,  
-    output wire [7:0] uio_out,  
+    output wire [7:0] uio_out,   // score  
     output wire [7:0] uio_oe,  
     input  wire       ena,  
     input  wire       clk,  
     input  wire       rst_n  
 );
-    // Debouncer
+    // Debounced buttons
     wire [7:0] deb_btn;
     genvar i;
     generate
@@ -273,7 +275,7 @@ module tt_um_whack_a_mole(
       end
     endgenerate
 
-    // Wires for control
+    // Core signals
     wire        start_btn   = deb_btn[0];
     wire        game_end;
     wire [2:0]  rand_seg;
@@ -284,7 +286,7 @@ module tt_um_whack_a_mole(
     wire [6:0]  seg;
     wire        dp;
 
-    // Game timer
+    // Instantiate blocks
     game_timer timer_inst (
       .clk       (clk),
       .rst_n     (rst_n),
@@ -292,14 +294,12 @@ module tt_um_whack_a_mole(
       .game_end  (game_end)
     );
 
-    // Random‐segment LFSR
     rng_lfsr rng_inst (
       .clk      (clk),
       .rst_n    (rst_n),
       .rand_seg (rand_seg)
     );
 
-    // FSM
     game_fsm fsm_inst (
       .clk            (clk),
       .rst_n          (rst_n),
@@ -312,7 +312,6 @@ module tt_um_whack_a_mole(
       .score_cnt      (score)
     );
 
-    // 7-segment driver
     seg7_driver drv_inst (
       .segment_select(segment_select),
       .game_end      (game_end),
@@ -324,9 +323,10 @@ module tt_um_whack_a_mole(
     // Mask locked-out buttons
     assign btn_sync = deb_btn & ~lockout;
 
-    // -------------------------------------------------------------------------
-    // NEG-edge pipeline register on score → uio_out
-    // -------------------------------------------------------------------------
+
+    //------------------------------------------------------------------------
+    // NEG-edge pipeline for uio_out (score → pad)
+    //------------------------------------------------------------------------
     reg [7:0] uio_out_reg;
     always @(negedge clk or negedge rst_n) begin
         if (!rst_n)
@@ -334,13 +334,24 @@ module tt_um_whack_a_mole(
         else
             uio_out_reg <= score;
     end
+    assign uio_out = uio_out_reg;
 
-    // Final I/O
-    assign uo_out  = {dp, seg};
-    assign uio_out = uio_out_reg;    
-    assign uio_oe  = 8'hFF;
 
-    // Silence unused
+    //------------------------------------------------------------------------
+    // NEG-edge pipeline for uo_out ({dp, seg} → pad)
+    //------------------------------------------------------------------------
+    reg [7:0] uo_out_reg;
+    always @(negedge clk or negedge rst_n) begin
+        if (!rst_n)
+            uo_out_reg <= 8'd0;
+        else
+            uo_out_reg <= {dp, seg};
+    end
+    assign uo_out = uo_out_reg;
+
+
+    // Drive enables and silence unused
+    assign uio_oe = 8'hFF;
     wire _unused = &{ena, uio_in};
 
 endmodule
