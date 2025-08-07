@@ -145,15 +145,15 @@ module game_timer(
     end
 endmodule
 
-//-----------------------------------------------------------------------------  
-// Game Control FSM with IDLE, NEXT, WAIT, GAME_OVER and 1s lockout timer  
-//-----------------------------------------------------------------------------  
+//-----------------------------------------------------------------------------
+// Game Control FSM with edge-qualified button events
+//-----------------------------------------------------------------------------
 module game_fsm(
     input  wire        clk,
     input  wire        rst_n,
     input  wire [2:0]  rand_seg,
-    input  wire [7:0]  btn_sync,
-    input  wire        start_btn,   // pb0
+    input  wire [7:0]  btn_sync,      // debounced & lockout-masked (from top)
+    input  wire        start_btn,     // pb0 (already debounced)
     input  wire        game_end,
     output reg  [2:0]  segment_select,
     output reg  [7:0]  lockout,
@@ -162,28 +162,35 @@ module game_fsm(
     typedef enum reg [1:0] { IDLE, NEXT, WAIT, GAME_OVER } state_t;
     state_t state;
 
-    // edge detect on start_btn
-    reg prev_start;
+    // Rising-edge detect on start_btn
+    reg  prev_start;
     wire start_edge = start_btn && !prev_start;
+
+    // Rising-edge detect on the debounced, masked buttons
+    reg  [7:0] prev_btn_sync;
+    wire [7:0] btn_rise = btn_sync & ~prev_btn_sync; // one-cycle pulses per press
 
     // 1-second lockout counter
     reg [19:0] lock_timer;
-    `ifdef SIMULATION
-        localparam LOCK_CYCLES = 20'd10;
-    `else
-        localparam LOCK_CYCLES = 20'd1000000;
-    `endif
+`ifdef SIMULATION
+    localparam LOCK_CYCLES = 20'd10;
+`else
+    localparam LOCK_CYCLES = 20'd1000000;
+`endif
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state           <= NEXT;       // auto-start on reset
             prev_start      <= 1'b0;
+            prev_btn_sync   <= 8'd0;
             lockout         <= 8'd0;
             score_cnt       <= 8'd0;
             segment_select  <= 3'd0;
             lock_timer      <= 20'd0;
         end else begin
-            prev_start <= start_btn;
+            // update edge detectors
+            prev_start    <= start_btn;
+            prev_btn_sync <= btn_sync;
 
             case (state)
             IDLE: begin
@@ -197,6 +204,7 @@ module game_fsm(
             end
 
             NEXT: begin
+                // Pick next target, clear any penalty
                 segment_select <= (rand_seg == 3'd7) ? 3'd0 : rand_seg;
                 lockout        <= 8'd0;
                 lock_timer     <= 20'd0;
@@ -206,7 +214,7 @@ module game_fsm(
             WAIT: begin
                 // penalty countdown
                 if (lock_timer != 20'd0) begin
-                    lock_timer <= lock_timer - 1;
+                    lock_timer <= lock_timer - 1'b1;
                     if (lock_timer == 20'd1)
                         lockout <= 8'd0;
                 end
@@ -214,23 +222,22 @@ module game_fsm(
                 if (game_end) begin
                     state <= GAME_OVER;
                 end
-                else if (btn_sync[segment_select]) begin
+                // Use *edges* for both correct and wrong hits
+                else if (btn_rise[segment_select]) begin
                     // correct hit
-                    score_cnt <= score_cnt + 1;
+                    score_cnt <= score_cnt + 1'b1;
                     state     <= NEXT;
                 end
-                else if (|btn_sync && lock_timer == 20'd0) begin
-                    // wrong hit, start a 1s lockout (only if none already running)
-                    lockout    <= btn_sync;
+                else if ((|btn_rise) && (lock_timer == 20'd0)) begin
+                    // wrong hit → start 1s lockout (only new presses)
+                    lockout    <= btn_rise;     // lock the newly pressed bit(s)
                     lock_timer <= LOCK_CYCLES;
                 end
-                // ** no mid-game start_btn handling here **
             end
 
             GAME_OVER: begin
                 lockout <= 8'hFF;   // lock all buttons
                 if (start_edge) begin
-                    // only now does pb0 restart
                     score_cnt      <= 8'd0;
                     lockout        <= 8'd0;
                     segment_select <= 3'd0;
@@ -241,7 +248,8 @@ module game_fsm(
             endcase
         end
     end
-endmodule 
+endmodule
+
 
 `default_nettype none
 
