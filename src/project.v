@@ -245,8 +245,9 @@ endmodule
 
 `default_nettype none
 
+
 //-----------------------------------------------------------------------------  
-// Top-level: tt_um_whack_a_mole with pipelined uio_out register  
+// Top-level: tt_um_whack_a_mole with NEG-edge pipelined uio_out  
 //-----------------------------------------------------------------------------  
 module tt_um_whack_a_mole(  
     input  wire [7:0] ui_in,  
@@ -258,22 +259,22 @@ module tt_um_whack_a_mole(
     input  wire       clk,  
     input  wire       rst_n  
 );
-    // Debounced button inputs
+    // Debouncer
     wire [7:0] deb_btn;
     genvar i;
     generate
-        for (i = 0; i < 8; i = i + 1) begin : btn_deb
-            button_debouncer #(.DEBOUNCE_CYCLES(4)) db (
-                .clk    (clk),
-                .rst_n  (rst_n),
-                .btn_in (ui_in[i]),
-                .btn_out(deb_btn[i])
-            );
-        end
+      for (i = 0; i < 8; i = i + 1) begin : btn_deb
+        button_debouncer #(.DEBOUNCE_CYCLES(4)) db (
+          .clk    (clk),
+          .rst_n  (rst_n),
+          .btn_in (ui_in[i]),
+          .btn_out(deb_btn[i])
+        );
+      end
     endgenerate
 
     // Wires for control
-    wire        start_btn  = deb_btn[0];
+    wire        start_btn   = deb_btn[0];
     wire        game_end;
     wire [2:0]  rand_seg;
     wire [7:0]  btn_sync;
@@ -285,59 +286,61 @@ module tt_um_whack_a_mole(
 
     // Game timer
     game_timer timer_inst (
-        .clk       (clk),
-        .rst_n     (rst_n),
-        .start_btn (start_btn),
-        .game_end  (game_end)
+      .clk       (clk),
+      .rst_n     (rst_n),
+      .start_btn (start_btn),
+      .game_end  (game_end)
     );
 
-    // LFSR for randomness
+    // Random‐segment LFSR
     rng_lfsr rng_inst (
-        .clk      (clk),
-        .rst_n    (rst_n),
-        .rand_seg (rand_seg)
+      .clk      (clk),
+      .rst_n    (rst_n),
+      .rand_seg (rand_seg)
     );
 
-    // FSM for game control
+    // FSM
     game_fsm fsm_inst (
-        .clk            (clk),
-        .rst_n          (rst_n),
-        .rand_seg       (rand_seg),
-        .btn_sync       (btn_sync),
-        .start_btn      (start_btn),
-        .game_end       (game_end),
-        .segment_select (segment_select),
-        .lockout        (lockout),
-        .score_cnt      (score)
+      .clk            (clk),
+      .rst_n          (rst_n),
+      .rand_seg       (rand_seg),
+      .btn_sync       (btn_sync),
+      .start_btn      (start_btn),
+      .game_end       (game_end),
+      .segment_select (segment_select),
+      .lockout        (lockout),
+      .score_cnt      (score)
     );
 
-    // 7-segment display driver
+    // 7-segment driver
     seg7_driver drv_inst (
-        .segment_select(segment_select),
-        .game_end      (game_end),
-        .score         (score),
-        .seg           (seg),
-        .dp            (dp)
+      .segment_select(segment_select),
+      .game_end      (game_end),
+      .score         (score),
+      .seg           (seg),
+      .dp            (dp)
     );
 
-    // Mask out locked-out buttons
+    // Mask locked-out buttons
     assign btn_sync = deb_btn & ~lockout;
 
-    // Pipeline register on the score → uio_out path
+    // -------------------------------------------------------------------------
+    // NEG-edge pipeline register on score → uio_out
+    // -------------------------------------------------------------------------
     reg [7:0] uio_out_reg;
-    always @(posedge clk or negedge rst_n) begin
+    always @(negedge clk or negedge rst_n) begin
         if (!rst_n)
             uio_out_reg <= 8'd0;
         else
             uio_out_reg <= score;
     end
 
-    // Final I/O assignments
+    // Final I/O
     assign uo_out  = {dp, seg};
-    assign uio_out = uio_out_reg;
+    assign uio_out = uio_out_reg;    
     assign uio_oe  = 8'hFF;
 
-    // Prevent unused-port warnings
+    // Silence unused
     wire _unused = &{ena, uio_in};
 
 endmodule
