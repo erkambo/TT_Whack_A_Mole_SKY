@@ -298,6 +298,16 @@ module tt_um_whack_a_mole(
     input  wire       clk,  
     input  wire       rst_n  
 );
+
+    //input delay
+    reg [7:0] ui_sync;
+    always @(posedge clk or negedge rst_n) begin
+      if (!rst_n)
+        ui_sync <= 8'd0;
+      else
+        ui_sync <= ui_in;
+    end
+  
     // Debounced buttons
     wire [7:0] deb_btn;
     genvar i;
@@ -306,7 +316,7 @@ module tt_um_whack_a_mole(
         button_debouncer #(.DEBOUNCE_CYCLES(4)) db (
           .clk    (clk),
           .rst_n  (rst_n),
-          .btn_in (ui_in[i]),
+          .btn_in (ui_sync[i]),
           .btn_out(deb_btn[i])
         );
       end
