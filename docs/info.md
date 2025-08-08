@@ -323,10 +323,10 @@ This section documents the final post-layout STA for the **Whack-a-Mole ASIC**. 
 # Contributions
 ---
 Armaan Ghosh 
-Modules,Test cases, Documentation
+- Module Compilation, Test Generation, Documentation
 
 Erkam Boyacioglu
-Modules, Testing, Waveform and STA analyis
+- Module Compilation, Module Testing, Waveform and STA analyis
 
 Special thanks to:
 Professors: John Long and Vincent Gaudet
