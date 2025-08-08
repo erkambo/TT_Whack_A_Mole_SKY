@@ -393,29 +393,23 @@ async def test_no_midgame_restart(dut):
 
     assert dut.uio_out.value.integer == 2, "Setup: score should be 2"
 
-    # 2) Record current state snapshot
-    idx_before     = await wait_active(dut)
-    score_before   = dut.uio_out.value.integer
-    seg_before = dut.user_project.fsm_inst.segment_select.value.integer
-
-    # 3) Press pb0 (mid-game)
+    # 2) Press pb0 (mid-game)
     dut.ui_in.value = 1 << 0
     for _ in range(5):
         await RisingEdge(dut.clk)
     dut.ui_in.value = 0
 
-    # 4) Wait for effects to propagate
+    # 3) Wait for a few more cycles to let any effects settle
     for _ in range(25):
         await RisingEdge(dut.clk)
 
-    # 5) Re-sample state
-    score_after = dut.uio_out.value.integer
-    seg_after =  dut.user_project.fsm_inst.segment_select.value.integer
+    # 4) Assert that score has not reset
+    score = dut.uio_out.value.integer
+    assert score >= 2, f"Score reset unexpectedly to {score}!"
 
-    # 6) Assert game didn't reset
-    assert get_dp(dut) == 1, "Mid-game pb0 ended the game!"
-    assert score_after >= score_before, "Score reset after pb0!"
-    assert not (score_after == 0 and seg_after == 0), "Game reset unexpectedly!"
+    # 5) Assert that dp is still high (game not ended)
+    dp = get_dp(dut)
+    assert dp == 1, f"dp dropped unexpectedly mid-game after pb0 press"
 
 @cocotb.test()
 async def test_dp_behavior(dut):
@@ -512,7 +506,7 @@ async def test_score_rollover_display(dut):
 
     # Sample display multiple times to catch both digits
     seen_digits = set()
-    for _ in range(10000):  # simulate 10k cycles
+    for _ in range(50000):  # simulate 10k cycles
         await RisingEdge(dut.clk)
         seen_digits.add(dut.uo_out.value.integer & 0x7F)
 
