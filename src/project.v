@@ -302,6 +302,9 @@ module tt_um_whack_a_mole(
         // Stage-0: create ~100–200ps of silicon delay before any flop
     wire [7:0] ui_del = ~ui_in;   // first inverter
     wire [7:0] ui_buf = ~ui_del;  // second inverter
+    wire [7:0] ui_buf2 = ~ui_buf;  //3rd inver
+    wire [7:0] ui_buf3 = ~ui_buf2;
+
 
     // Stage-1: synchronize the *buffered* inputs to break pad→flop hold
     reg [7:0] ui_sync;
@@ -309,7 +312,7 @@ module tt_um_whack_a_mole(
       if (!rst_n)
         ui_sync <= 8'd0;
       else
-        ui_sync <= ui_buf;        // ← now sampling through two inverters
+        ui_sync <= ui_buf3;        // ← now sampling through 4 inverters
     end
 
     // Stage-2: feed debouncer from the synchronized, delayed signal
@@ -325,7 +328,7 @@ module tt_um_whack_a_mole(
         );
       end
     endgenerate
-    
+
     // Core signals
     wire        start_btn   = deb_btn[0];
     wire        game_end;
