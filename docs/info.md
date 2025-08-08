@@ -11,31 +11,138 @@ You can also include images in this folder and reference them in the markdown. E
 
 This tiny ASIC lights up random segments of a 7-segment display and challenges the player to hit the corresponding push-button as fast as possible. Each correct press turns that segment off and scores a point; each incorrect press “locks out” that button for the remainder of the round. A countdown timer limits the game duration, and the final score is shown on the display.
 
+
+
+# 🎮 Game Flow – Whack-a-Mole FSM Sequence
+
+<details>
+<summary><strong>Click to expand full FSM sequence</strong></summary>
+
+---
+
+### 🔌 Upon Power-Up / Reset
+
+- **Asynchronous Reset**
+  - All registers are cleared:
+    - `score_cnt`, `lockout`, `LFSR seed`, `timers`, `FSM state`
+  - Initial values:
+    ```verilog
+    score_cnt ← 0
+    lockout ← 0
+    segment_select ← 0
+    ```
+
+- **Auto-Start**
+  - On the **first rising edge of `clk`** after `rst_n` goes high:
+    - FSM enters the `NEXT` state directly (no idle/manual start)
+    - `game_timer` and `lock_timer` reset to 0
+
+---
+
+### ▶️ NEXT State
+
+- **Mole Selection**
+  - Sample lower 3 bits of 16→3 bit LFSR: `rand_seg`
+  - If `rand_seg == 7`, wrap to 0 → only segments `0–6` used
+
+- **Penalty Reset**
+  ```verilog
+  lockout ← 0
+  lock_timer ← 0
+  ```
+
+- **Display**
+  - `dp = 1` → game running
+  - Illuminate one segment (`segment_select`) → active mole
+  - Transition to `WAIT` state
+
+---
+
+### ⏳ WAIT State
+
+- **Game Clock**
+  - Increment `game_timer` each clock cycle
+  - If `game_timer ≥ TARGET_COUNT`:
+    - `game_end ← 1`
+
+- **Hit Detection (Edge-Qualified)**
+  - **Correct hit**:
+    - Rising edge on `btn_sync[segment_select]`
+    - `score_cnt++`
+    - FSM → `NEXT`
+
+  - **Wrong hit**:
+    - Rising edge on other `btn_sync[i]`, and `lock_timer == 0`
+    - Trigger penalty:
+      ```verilog
+      lockout[i] ← 1
+      lock_timer ← LOCK_CYCLES  // (~1s in silicon, ~10 cycles in SIM)
+      ```
+
+- **Penalty Countdown**
+  - If `lock_timer > 0`, decrement each cycle
+  - When it hits 1:
+    - Clear `lockout`
+
+- **Game End Check**
+  - If `game_end == 1`, transition to → `GAME_OVER`
+
+---
+
+### 🛑 GAME_OVER State
+
+- **Disable Input**
+  - `lockout ← 8'hFF` → all buttons locked
+
+- **Display Final Score**
+  - `dp = 0` → game over
+  - 7-segment display **blinks** between tens and ones digits of `score_cnt` every ~0.5s
+
+- **Wait for Restart**
+  - Only a **debounced rising edge** on `btn_sync[0]` will:
+    - Clear `score_cnt`, `lockout`, `lock_timer`, `game_timer`
+    - FSM auto-restarts at `NEXT`
+
+---
+</details>
+
 Image
 ![image](project_design_flow.png)
 
 
 **I/O Signal Assignment**
 
-| Signal Name  | Direction | Width | Description                     |
-|--------------|-----------|:-----:|---------------------------------|
-| `clk`        | input     | 1     | System clock     |
-| `rst_n`      | input     | 1     | Active-low reset                |
-| `seg7_a…g`   | output    | 7     | 7-segment cathode/anode lines   |
-| `seg7_dp`    | output    | 1     | Decimal point                   |
-| `btn[7:0]`   | input     | 8     | Push-button inputs              |
-| `led[7:0]`   | output    | 8     | LED mirror of buttons           |
-| `score[3:0]` | output    | 4     | Binary score output             |
+| Signal Name   | Direction | Width | Description                                    |
+| ------------- | --------- | :---: | ---------------------------------------------- |
+| clk         | input     |   1   | System clock                                   |
+| rst_n       | input     |   1   | Active-low asynchronous reset                  |
+| ena         | input     |   1   | Tiny Tapeout harness enable                    |
+| seg7_a…g    | output    |   7   | 7-segment segments (maps to uo_out[6:0])     |
+| seg7_dp     | output    |   1   | Decimal point (maps to uo_out[7])            |
+| btn[7:0]    | input     |   8   | Push-button inputs (maps to ui_in[7:0])      |
+| score[7:0]  | output    |   8   | Binary score output (maps to uio_out[7:0])   |
+| uio_oe[7:0] | output    |   8   | Output enables for uio (permanently enabled) |
 
 **Internal Signals**
-| Name              | Width | From → To          | Description                             |
-|-------------------|:-----:|--------------------|-----------------------------------------|
-| `rand_seg[2:0]`   | 3     | RNG → FSM          | Which segment to light next             |
-| `countdown[15:0]` | 16    | Timer → FSM        | Remaining game time                     |
-| `btn_sync[7:0]`   | 8     | ButtonIF → FSM     | Debounced & synchronized button inputs  |
-| `lockout[7:0]`    | 8     | FSM → ButtonIF     | Mask for disabled buttons after error   |
-| `score_cnt[7:0]`  | 8     | FSM → ScoreCounter | Current player score                    |
-| `state[2:0]`      | 3     | Control FSM regs   | FSM current state (e.g., IDLE, PLAY)    |
+| Name                  | Width | From → To                          | Description                                          |
+| --------------------- | :---: | ---------------------------------- | ---------------------------------------------------- |
+| `ui_del[7:0]`         |   8   | Pad → double-invert chain          | First inversion of raw inputs                        |
+| `ui_buf[7:0]`         |   8   | `ui_del` → double-invert chain     | Second inversion (restores original bits)            |
+| `ui_buf2[7:0]`        |   8   | `ui_buf` → double-invert chain     | Third inversion                                      |
+| `ui_buf3[7:0]`        |   8   | `ui_buf2` → synchronizer           | Fourth inversion, final delayed bus                  |
+| `ui_sync[7:0]`        |   8   | `ui_buf3` → debouncer              | Synchronized & delayed button inputs                 |
+| `deb_btn[7:0]`        |   8   | debouncer → FSM                    | Debounced button signals                             |
+| `start_btn`           |   1   | `deb_btn[0]` → timer & FSM         | “Start” push-button after debounce                   |
+| `rand_seg[2:0]`       |   3   | RNG → FSM                          | Next segment index from LFSR                         |
+| `btn_sync[7:0]`       |   8   | `deb_btn & ~lockout` → FSM         | Masked & debounced inputs into the FSM               |
+| `segment_select[2:0]` |   3   | FSM → seg7\_driver                 | Which segment (0–6) is currently active              |
+| `lockout[7:0]`        |   8   | FSM → mask logic                   | One-cycle penalty mask for wrong presses             |
+| `score[7:0]`          |   8   | FSM → seg7\_driver & score reg     | Current hit count                                    |
+| `seg[6:0]`            |   7   | seg7\_driver → `uo_out`            | 7-segment cathode/anode pattern                      |
+| `dp`                  |   1   | seg7\_driver → `uo_out`            | Decimal-point control (1 during play, 0 at game-end) |
+| `uio_out_reg[7:0]`    |   8   | score → negedge pipeline reg       | Registered on negedge for `uio_out`                  |
+| `uo_out_reg[7:0]`     |   8   | `{dp, seg}` → negedge pipeline reg | Registered on negedge for `uo_out`                   |
+
 
 ## How to test
 Verification is performed through a combination of simulation and on-hardware validation.
@@ -190,7 +297,7 @@ Waveform Viewer: GTKWave.
 
 # ⏱️ Static Timing Analysis (STA) – Final Post-Layout Results
 
-This section documents the final post-layout STA for the **Whack-a-Mole ASIC**. Timing analysis was conducted using **OpenSTA** at the **`ss` (slow-slow)** corner. All **setup**, **hold**, **removal**, and **recovery** paths passed timing checks.
+This section documents the final post-layout STA for the **Whack-a-Mole ASIC**. Timing analysis was conducted using **OpenSTA** at the **`tt`** corner. All **setup**, **hold**, **removal**, and **recovery** paths passed timing checks.
 
 ---
 
@@ -207,37 +314,20 @@ This section documents the final post-layout STA for the **Whack-a-Mole ASIC**. 
 
 ## 🧠 Context & Justification
 
-- `ui_in[3]` is an external button input.
-  - Although it participates in a hold path, **it is driven via a breakout board input handler**, which handles synchronization.
-  - Thus, any slight hold margin is considered **non-critical**.
-
 - All asynchronous reset paths using `rst_n` **passed removal and recovery checks**, indicating safe release timing.
 
 - Long setup paths (clk → clk') in the datapath still maintain **>45 ns slack**, confirming **ample timing margin** post-routing.
 
 ---
 
-## 🔧 Tool Warnings & Handling
-
-The following benign warnings were issued and addressed:
-
-| Warning Source                 | Explanation                                                                 |
-|--------------------------------|-----------------------------------------------------------------------------|
-| `module ... not found`         | Related to TAPCELL or filler rows. These are physical-only and do not affect STA. |
-| `set_input_delay on clock pin` | Misapplied constraint; corrected in final timing script.                   |
-
+# Contributions
 ---
+Armaan Ghosh 
+Modules,Test cases, Documentation
 
-## 📁 Raw Logs & Reports
+Erkam Boyacioglu
+Modules, Testing, Waveform and STA analyis
 
-> Full timing reports and logs can be found in the `sta/` directory:
-- [`sta_final_postlayout.rpt`](sta/sta_final_postlayout.rpt)
-- [`slack_test.tcl`](sta/slack_test.tcl)
-- [`opensta.log`](sta/opensta.log)
-
----
-
-## ✅ Final Conclusion
-
-> All functional timing paths passed STA in the **post-layout gate-level netlist**.  
-> The design is considered **timing clean and ready for signoff** at the `ss` corner.
+Special thanks to:
+Professors: John Long and Vincent Gaudet
+TA: Refik Yalcin
