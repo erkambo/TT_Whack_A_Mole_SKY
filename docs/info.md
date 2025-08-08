@@ -187,40 +187,57 @@ Waveform Viewer: GTKWave.
 | `TC-RNG-01`         | Random segment selector never outputs index `7`.                            | `test_segment_never_seven`                   |
 
 ---
-# ⏱️ Static Timing Analysis (STA) – Post-Layout Results (Run 2)
 
-This STA was performed using OpenLane and OpenSTA at the **SS process corner**, focusing on the primary `clk` domain. Violations on input pins (`ui_in[7]`) are acknowledged but not considered critical for fabrication, as signals are passed through a input handler on the breakout board.
+# ⏱️ Static Timing Analysis (STA) – Final Post-Layout Results
 
----
-
-## 🔎 Summary Table
-
-| Path Type | Startpoint         | Endpoint          | Check Type     | Slack       | Status     |
-|-----------|--------------------|-------------------|----------------|-------------|------------|
-| Hold      | `rst_n`            | `_1002_`          | Removal        | +0.04 ns    | ✅ MET     |
-| Hold      | `ui_in[7]`         | `_0975_`          | Hold           | -0.06 ns    | ⚠️  |
-| Recovery  | `rst_n`            | `_0955_`          | Recovery       | +48.58 ns   | ✅ MET     |
-| Setup     | `_1027_`           | `_0952_`          | Setup          | +43.40 ns   | ✅ MET     |
+This section documents the final post-layout STA for the **Whack-a-Mole ASIC**. Timing analysis was conducted using **OpenSTA** at the **`ss` (slow-slow)** corner. All **setup**, **hold**, **removal**, and **recovery** paths passed timing checks.
 
 ---
 
-## 🚫 Acknowledged Non-Critical Violation
+## ✅ Summary Table
 
-- **Violation**: `ui_in[7]` → `_0975_`, **Hold Slack** = `-0.06 ns`
-- **Reason for exclusion**: Input signal is externally synchronized and debounced before entering core logic.
-- **Assumption**: IO block or handler will remove race hazards.
+| Path Type | Startpoint         | Endpoint          | Check Type     | Slack       | Status  |
+|-----------|--------------------|-------------------|----------------|-------------|---------|
+| Removal   | `rst_n`            | `_0984_`          | Removal        | +0.31 ns    | ✅ MET  |
+| Hold      | `ui_in[3]`         | `_0963_`          | Hold           | +0.09 ns    | ✅ MET  |
+| Recovery  | `rst_n`            | `_0957_`          | Recovery       | +48.78 ns   | ✅ MET  |
+| Setup     | `_1018_`           | `_0947_`          | Setup          | +45.95 ns   | ✅ MET  |
 
 ---
 
-## ✅ Key Takeaways
+## 🧠 Context & Justification
 
-- All **internal critical paths** pass STA timing.
-- **Asynchronous reset (`rst_n`)** removal and recovery checks **pass** post-layout.
-- Slack margins on setup and recovery paths are strong, even at SS corner.
+- `ui_in[3]` is an external button input.
+  - Although it participates in a hold path, **it is driven via a breakout board input handler**, which handles synchronization.
+  - Thus, any slight hold margin is considered **non-critical**.
 
-### 🛠️ Notes for Fabrication
+- All asynchronous reset paths using `rst_n` **passed removal and recovery checks**, indicating safe release timing.
 
-> 🛎️ **Reminder**: Simulation constants like the debounce duration (e.g., 4 cycles) must be scaled appropriately for real hardware clock frequencies.
+- Long setup paths (clk → clk') in the datapath still maintain **>45 ns slack**, confirming **ample timing margin** post-routing.
 
+---
 
+## 🔧 Tool Warnings & Handling
 
+The following benign warnings were issued and addressed:
+
+| Warning Source                 | Explanation                                                                 |
+|--------------------------------|-----------------------------------------------------------------------------|
+| `module ... not found`         | Related to TAPCELL or filler rows. These are physical-only and do not affect STA. |
+| `set_input_delay on clock pin` | Misapplied constraint; corrected in final timing script.                   |
+
+---
+
+## 📁 Raw Logs & Reports
+
+> Full timing reports and logs can be found in the `sta/` directory:
+- [`sta_final_postlayout.rpt`](sta/sta_final_postlayout.rpt)
+- [`slack_test.tcl`](sta/slack_test.tcl)
+- [`opensta.log`](sta/opensta.log)
+
+---
+
+## ✅ Final Conclusion
+
+> All functional timing paths passed STA in the **post-layout gate-level netlist**.  
+> The design is considered **timing clean and ready for signoff** at the `ss` corner.
