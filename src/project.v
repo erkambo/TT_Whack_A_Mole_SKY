@@ -67,12 +67,13 @@ module seg7_driver(
     reg blink_toggle;
     reg [23:0] blink_counter;
 
-          // Adjust this to change blink frequency
-      `ifdef SIMULATION
-          localparam BLINK_MAX = 24'd500;  // fast for simulation (~0.025 ms)
-      `else
-          localparam BLINK_MAX = 24'd500_000;  // ~0.5s at 20MHz
-      `endif
+       `ifdef SIMULATION
+        localparam BLINK_MAX = 24'd500;            // fast for RTL sim
+        `elsif GL_TEST
+            localparam BLINK_MAX = 24'd500;            // fast for gate-level
+        `else
+            localparam BLINK_MAX = 24'd10_000_000;     // ~0.5s at 20 MHz
+        `endif
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

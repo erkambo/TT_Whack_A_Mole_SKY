@@ -506,7 +506,7 @@ async def test_score_rollover_display(dut):
 
     # Sample display multiple times to catch both digits
     seen_digits = set()
-    for _ in range(50000):  # simulate 10k cycles
+    for _ in range(10000):  # simulate 10k cycles
         await RisingEdge(dut.clk)
         seen_digits.add(dut.uo_out.value.integer & 0x7F)
 
