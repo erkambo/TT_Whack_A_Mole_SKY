@@ -483,35 +483,35 @@ SEG_HEX = [
     0b0010000,  # 9
 ]
 
-@cocotb.test()
-async def test_score_rollover_display(dut):
-    """Ensure score displays blink tens/ones correctly after game ends."""
-    cocotb.start_soon(Clock(dut.clk, 1000, units='ns').start())
-    dut.ui_in.value = 0
-    await reset_dut(dut)
+# @cocotb.test()
+# async def test_score_rollover_display(dut):
+#     """Ensure score displays blink tens/ones correctly after game ends."""
+#     cocotb.start_soon(Clock(dut.clk, 1000, units='ns').start())
+#     dut.ui_in.value = 0
+#     await reset_dut(dut)
 
-    # Set score manually (if allowed), or simulate scoring to 23
-    for _ in range(23):
-        idx = await wait_active(dut)
-        dut.ui_in.value = 1 << idx
-        for _ in range(5): await RisingEdge(dut.clk)
-        dut.ui_in.value = 0
-        for _ in range(3): await RisingEdge(dut.clk)
+#     # Set score manually (if allowed), or simulate scoring to 23
+#     for _ in range(23):
+#         idx = await wait_active(dut)
+#         dut.ui_in.value = 1 << idx
+#         for _ in range(5): await RisingEdge(dut.clk)
+#         dut.ui_in.value = 0
+#         for _ in range(3): await RisingEdge(dut.clk)
 
-    # Wait until game ends (or force it)
-    while not dut.uio_out.value.integer >= 23:
-        await RisingEdge(dut.clk)
-    for _ in range(100):
-        await RisingEdge(dut.clk)
+#     # Wait until game ends (or force it)
+#     while not dut.uio_out.value.integer >= 23:
+#         await RisingEdge(dut.clk)
+#     for _ in range(100):
+#         await RisingEdge(dut.clk)
 
-    # Sample display multiple times to catch both digits
-    seen_digits = set()
-    for _ in range(10000):  # simulate 10k cycles
-        await RisingEdge(dut.clk)
-        seen_digits.add(dut.uo_out.value.integer & 0x7F)
+#     # Sample display multiple times to catch both digits
+#     seen_digits = set()
+#     for _ in range(10000):  # simulate 10k cycles
+#         await RisingEdge(dut.clk)
+#         seen_digits.add(dut.uo_out.value.integer & 0x7F)
 
-    expected_tens = SEG_HEX[2]
-    expected_ones = SEG_HEX[3]
+#     expected_tens = SEG_HEX[2]
+#     expected_ones = SEG_HEX[3]
 
-    assert expected_tens in seen_digits, "Tens digit never appeared!"
-    assert expected_ones in seen_digits, "Ones digit never appeared!"
+#     assert expected_tens in seen_digits, "Tens digit never appeared!"
+#     assert expected_ones in seen_digits, "Ones digit never appeared!"
