@@ -12,7 +12,7 @@ You can also include images in this folder and reference them in the markdown. E
 This tiny ASIC lights up random segments of a 7-segment display and challenges the player to hit the corresponding push-button as fast as possible. Each correct press turns that segment off and scores a point; each incorrect press “locks out” that button for the remainder of the round. A countdown timer limits the game duration, and the final score is shown on the display.
 
 Image
-![image](https://github.com/user-attachments/assets/8d61c803-3c48-4858-84d8-b377c431ce2d)
+![image](project_design_flow.png)
 
 
 **I/O Signal Assignment**
