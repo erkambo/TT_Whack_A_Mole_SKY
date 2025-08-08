@@ -53,50 +53,78 @@ endmodule
 //-----------------------------------------------------------------------------  
 // 7-segment display driver  
 //-----------------------------------------------------------------------------  
-module seg7_driver(  
-    input  wire [2:0]  segment_select,  
-    input  wire        game_end,  
-    input  wire [7:0]  score,  
-    output reg  [6:0]  seg,  
-    output reg         dp  
-);  
-    always @(*) begin  
-        if (!game_end) begin  
-            seg = 7'b1111111;  
-            case (segment_select)  
-                3'd0: seg[0] = 1'b0;  
-                3'd1: seg[1] = 1'b0;  
-                3'd2: seg[2] = 1'b0;  
-                3'd3: seg[3] = 1'b0;  
-                3'd4: seg[4] = 1'b0;  
-                3'd5: seg[5] = 1'b0;  
-                3'd6: seg[6] = 1'b0;  
-                default: seg[0] = 1'b0;  
-            endcase  
-            dp = 1'b1;  
-        end else begin  
-            case (score[3:0])  
-                4'h0: seg = 7'b1000000;  
-                4'h1: seg = 7'b1111001;  
-                4'h2: seg = 7'b0100100;  
-                4'h3: seg = 7'b0110000;  
-                4'h4: seg = 7'b0011001;  
-                4'h5: seg = 7'b0010010;  
-                4'h6: seg = 7'b0000010;  
-                4'h7: seg = 7'b1111000;  
-                4'h8: seg = 7'b0000000;  
-                4'h9: seg = 7'b0010000;  
-                4'hA: seg = 7'b0001000;  
-                4'hB: seg = 7'b0000011;  
-                4'hC: seg = 7'b1000110;  
-                4'hD: seg = 7'b0100001;  
-                4'hE: seg = 7'b0000110;  
-                4'hF: seg = 7'b0001110;  
-            endcase  
-            dp = 1'b0;  
-        end  
-    end  
-endmodule  
+module seg7_driver(
+    input  wire        clk,
+    input  wire        rst_n,
+    input  wire [2:0]  segment_select,
+    input  wire        game_end,
+    input  wire [7:0]  score,
+    output reg  [6:0]  seg,
+    output reg         dp
+);
+
+    // Display alternation (blink) between tens and ones
+    reg blink_toggle;
+    reg [23:0] blink_counter;
+
+          // Adjust this to change blink frequency
+      `ifdef SIMULATION
+          localparam BLINK_MAX = 24'd500;  // fast for simulation (~0.025 ms)
+      `else
+          localparam BLINK_MAX = 24'd500_000;  // ~0.5s at 20MHz
+      `endif
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            blink_counter <= 24'd0;
+            blink_toggle  <= 1'b0;
+        end else begin
+            if (blink_counter == BLINK_MAX) begin
+                blink_counter <= 24'd0;
+                blink_toggle  <= ~blink_toggle;
+            end else begin
+                blink_counter <= blink_counter + 1;
+            end
+        end
+    end
+
+    // Extract decimal digits from score
+    wire [3:0] ones = score % 10;
+    wire [3:0] tens = score / 10;
+
+    always @(*) begin
+        if (!game_end) begin
+            seg = 7'b1111111;
+            case (segment_select)
+                3'd0: seg[0] = 1'b0;
+                3'd1: seg[1] = 1'b0;
+                3'd2: seg[2] = 1'b0;
+                3'd3: seg[3] = 1'b0;
+                3'd4: seg[4] = 1'b0;
+                3'd5: seg[5] = 1'b0;
+                3'd6: seg[6] = 1'b0;
+                default: seg[0] = 1'b0;
+            endcase
+            dp = 1'b1;
+        end else begin
+            // Score display mode (alternate digits)
+            dp = 1'b0;
+            case (blink_toggle ? tens : ones)
+                4'h0: seg = 7'b1000000;
+                4'h1: seg = 7'b1111001;
+                4'h2: seg = 7'b0100100;
+                4'h3: seg = 7'b0110000;
+                4'h4: seg = 7'b0011001;
+                4'h5: seg = 7'b0010010;
+                4'h6: seg = 7'b0000010;
+                4'h7: seg = 7'b1111000;
+                4'h8: seg = 7'b0000000;
+                4'h9: seg = 7'b0010000;
+                default: seg = 7'b1111111;  // blank for unknown
+            endcase
+        end
+    end
+endmodule
 
 //-----------------------------------------------------------------------------  
 // Countdown Timer with external start control  
@@ -320,13 +348,16 @@ module tt_um_whack_a_mole(
       .score_cnt      (score)
     );
 
-    seg7_driver drv_inst (
-      .segment_select(segment_select),
-      .game_end      (game_end),
-      .score         (score),
-      .seg           (seg),
-      .dp            (dp)
-    );
+  seg7_driver drv_inst (
+    .clk           (clk),
+    .rst_n         (rst_n),
+    .segment_select(segment_select),
+    .game_end      (game_end),
+    .score         (score),
+    .seg           (seg),
+    .dp            (dp)
+  );
+
 
     // Mask locked-out buttons
     assign btn_sync = deb_btn & ~lockout;
