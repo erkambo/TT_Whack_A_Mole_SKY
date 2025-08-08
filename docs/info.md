@@ -187,7 +187,40 @@ Waveform Viewer: GTKWave.
 | `TC-RNG-01`         | Random segment selector never outputs index `7`.                            | `test_segment_never_seven`                   |
 
 ---
+# ⏱️ Static Timing Analysis (STA) – Post-Layout Results (Run 2)
+
+This STA was performed using OpenLane and OpenSTA at the **SS process corner**, focusing on the primary `clk` domain. Violations on input pins (`ui_in[7]`) are acknowledged but not considered critical for fabrication, as signals are passed through a input handler on the breakout board.
+
+---
+
+## 🔎 Summary Table
+
+| Path Type | Startpoint         | Endpoint          | Check Type     | Slack       | Status     |
+|-----------|--------------------|-------------------|----------------|-------------|------------|
+| Hold      | `rst_n`            | `_1002_`          | Removal        | +0.04 ns    | ✅ MET     |
+| Hold      | `ui_in[7]`         | `_0975_`          | Hold           | -0.06 ns    | ⚠️  |
+| Recovery  | `rst_n`            | `_0955_`          | Recovery       | +48.58 ns   | ✅ MET     |
+| Setup     | `_1027_`           | `_0952_`          | Setup          | +43.40 ns   | ✅ MET     |
+
+---
+
+## 🚫 Acknowledged Non-Critical Violation
+
+- **Violation**: `ui_in[7]` → `_0975_`, **Hold Slack** = `-0.06 ns`
+- **Reason for exclusion**: Input signal is externally synchronized and debounced before entering core logic.
+- **Assumption**: IO block or handler will remove race hazards.
+
+---
+
+## ✅ Key Takeaways
+
+- All **internal critical paths** pass STA timing.
+- **Asynchronous reset (`rst_n`)** removal and recovery checks **pass** post-layout.
+- Slack margins on setup and recovery paths are strong, even at SS corner.
 
 ### 🛠️ Notes for Fabrication
 
 > 🛎️ **Reminder**: Simulation constants like the debounce duration (e.g., 4 cycles) must be scaled appropriately for real hardware clock frequencies.
+
+
+
