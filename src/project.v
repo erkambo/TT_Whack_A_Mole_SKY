@@ -299,7 +299,7 @@ module tt_um_whack_a_mole(
     input  wire       rst_n  
 );
 
-    //input delay
+    // Stage-0: Synchronize raw inputs
     reg [7:0] ui_sync;
     always @(posedge clk or negedge rst_n) begin
       if (!rst_n)
@@ -307,8 +307,12 @@ module tt_um_whack_a_mole(
       else
         ui_sync <= ui_in;
     end
-  
-    // Debounced buttons
+
+    // Stage-1: Double-invert to create ~100–200 ps of silicon delay
+    wire [7:0] ui_inv = ~ui_sync;    // first inversion
+    wire [7:0] ui_buf = ~ui_inv;     // second inversion (restores original bits)
+
+    // Debounced buttons now use the delayed inputs
     wire [7:0] deb_btn;
     genvar i;
     generate
@@ -316,7 +320,7 @@ module tt_um_whack_a_mole(
         button_debouncer #(.DEBOUNCE_CYCLES(4)) db (
           .clk    (clk),
           .rst_n  (rst_n),
-          .btn_in (ui_sync[i]),
+          .btn_in (ui_buf[i]),
           .btn_out(deb_btn[i])
         );
       end
